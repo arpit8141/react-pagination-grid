@@ -4,6 +4,52 @@ import { useStore } from "./StoreProvider";
 import * as XLSX from "xlsx";
 import "./App.css";
 
+// Function to filter data
+const filterData = (data, store) => {
+  return data.filter((item) => {
+    const { searchTerm, startDate, endDate, isDateFilterApplied } = store;
+
+    const matchSearch = Object.values(item)
+      .join(" ")
+      .toLowerCase()
+      .includes(searchTerm.toLowerCase());
+
+    if (isDateFilterApplied && (startDate || endDate)) {
+      const itemDate = new Date(item.ReportEndDate);
+      const fromDate = startDate ? new Date(startDate) : null;
+      const toDate = endDate ? new Date(endDate) : null;
+
+      if ((fromDate && itemDate < fromDate) || (toDate && itemDate > toDate)) {
+        return false;
+      }
+    }
+
+    return matchSearch;
+  });
+};
+
+// Function to sort data
+const sortData = (data, store) => {
+  const { sortKey, sortDirection } = store;
+  if (!sortKey) return data;
+
+  return data.sort((a, b) => {
+    const aValue = a[sortKey];
+    const bValue = b[sortKey];
+
+    if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
+    if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
+    return 0;
+  });
+};
+
+// Function to paginate data
+const paginateData = (data, store) => {
+  const startIndex = (store.currentPage - 1) * store.pageSize;
+  return data.slice(startIndex, startIndex + store.pageSize);
+};
+
+// Main App Component
 const App = observer(() => {
   const store = useStore();
 
@@ -29,8 +75,15 @@ const App = observer(() => {
     store.setSortDirection(direction);
   };
 
+  // Filtering, sorting, and pagination functions
+  let filteredData = filterData(store.data, store);
+  filteredData = sortData(filteredData, store);
+  const paginatedData = paginateData(filteredData, store);
+
+  const totalPages = Math.ceil(filteredData.length / store.pageSize);
+
   const handleDownload = () => {
-    const dataToDownload = filteredAndSortedData.map((row) => ({
+    const dataToDownload = paginatedData.map((row) => ({
       ReportEndDate: row.ReportEndDate,
       PatientName: row.PatientName,
       DownloadedAt: row.DownloadedAt,
@@ -41,49 +94,6 @@ const App = observer(() => {
     XLSX.utils.book_append_sheet(workbook, worksheet, "GridData");
     XLSX.writeFile(workbook, "grid_data.xlsx");
   };
-
-  const filteredAndSortedData = store.data
-    .filter((item) => {
-      const { searchTerm, startDate, endDate, isDateFilterApplied } = store;
-      const matchSearch = Object.values(item)
-        .join(" ")
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase());
-
-      if (isDateFilterApplied && (startDate || endDate)) {
-        const itemDate = new Date(item.ReportEndDate);
-        const fromDate = startDate ? new Date(startDate) : null;
-        const toDate = endDate ? new Date(endDate) : null;
-
-        if (
-          (fromDate && itemDate < fromDate) ||
-          (toDate && itemDate > toDate)
-        ) {
-          return false;
-        }
-      }
-
-      return matchSearch;
-    })
-    .sort((a, b) => {
-      const { sortKey, sortDirection } = store;
-      if (!sortKey) return 0;
-
-      const aValue = a[sortKey];
-      const bValue = b[sortKey];
-
-      if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
-      if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
-      return 0;
-    });
-
-  const startIndex = (store.currentPage - 1) * store.pageSize;
-  const paginatedData = filteredAndSortedData.slice(
-    startIndex,
-    startIndex + store.pageSize
-  );
-
-  const totalPages = Math.ceil(filteredAndSortedData.length / store.pageSize);
 
   return (
     <div className="container">
